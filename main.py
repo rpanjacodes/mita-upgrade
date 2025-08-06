@@ -2,11 +2,12 @@ import discord
 from discord.ext import commands
 import asyncio
 import os
-from db import connect_db, init_db
+from db import Database
 from dotenv import load_dotenv
 
+# Load .env
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")  # Secure your token in .env
+TOKEN = os.getenv("BOT_TOKEN")
 
 # Setup intents
 intents = discord.Intents.default()
@@ -16,14 +17,16 @@ intents.members = True
 intents.voice_states = True
 intents.bans = True
 
-# Bot setup: Prefix + Slash
+# Setup bot
 bot = commands.Bot(
     command_prefix="!",
     intents=intents,
     help_command=None
 )
 
-# Ready event
+# Setup db
+db = Database()
+
 @bot.event
 async def on_ready():
     await bot.change_presence(
@@ -52,16 +55,12 @@ async def on_guild_join(guild: discord.Guild):
     )
     embed.set_footer(text="Made With ❤️ By Kirtikaze Team")
 
-    # Try sending to system channel or first available channel
-    if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
-        await guild.system_channel.send(embed=embed)
-    else:
-        for channel in guild.text_channels:
-            if channel.permissions_for(guild.me).send_messages:
-                await channel.send(embed=embed)
-                break
+    for channel in [guild.system_channel, *guild.text_channels]:
+        if channel and channel.permissions_for(guild.me).send_messages:
+            await channel.send(embed=embed)
+            break
 
-# Load all cogs from /cogs/
+# Load all cogs
 async def load_cogs():
     for filename in os.listdir('./cogs'):
         if filename.endswith('.py') and not filename.startswith('_'):
@@ -71,10 +70,12 @@ async def load_cogs():
             except Exception as e:
                 print(f"❌ Failed to load cog {filename}: {e}")
 
-# Bot main
+# Main entry point
 async def main():
-    await connect_db()
-    await init_db()
+    await db.connect()
+    await db.init_tables()
+    bot.db = db  # Make db accessible in all cogs
+
     async with bot:
         await load_cogs()
         await bot.start(TOKEN)
